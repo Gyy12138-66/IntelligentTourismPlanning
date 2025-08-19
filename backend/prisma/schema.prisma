@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // User preferences
+  preferences   UserPreferences?
+  trips         Trip[]
+  savedPlaces   SavedPlace[]
+  reviews       Review[]
+
+  @@map("users")
+}
+
+model UserPreferences {
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Travel preferences
+  interests    String[]
+  budgetLevel  BudgetLevel @default(MID)
+  travelStyle  TravelStyle @default(COMFORTABLE)
+  dietary      String[]
+
+  // Time preferences
+  wakeUpTime     String  @default("07:00")
+  bedTime        String  @default("22:00")
+  breakfastTime  String  @default("08:00")
+  lunchTime      String  @default("12:00")
+  dinnerTime     String  @default("18:00")
+  paceLevel      PaceLevel @default(COMFORTABLE)
+  restInterval   Int     @default(60) // minutes
+  maxDailyHours  Int     @default(10) // hours
+  bufferTime     Int     @default(30) // minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("user_preferences")
+}
+
+model Trip {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title       String
+  destination String
+  startDate   DateTime
+  endDate     DateTime
+  travelers   Int      @default(1)
+  status      TripStatus @default(PLANNING)
+  
+  // Budget
+  budgetAmount  Float?
+  budgetCurrency String @default("USD")
+  actualCost    Float? @default(0)
+  
+  // Generated itinerary
+  itinerary     DayPlan[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("trips")
+}
+
+model DayPlan {
+  id       String @id @default(cuid())
+  tripId   String
+  trip     Trip   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  
+  date     DateTime
+  dayIndex Int
+  
+  // Schedule
+  startTime      String
+  endTime        String
+  totalActiveTime Int // minutes
+  totalRestTime   Int // minutes
+  flexibility     Int @default(5) // 0-10 scale
+  
+  // Daily elements
+  activities      Activity[]
+  accommodations  Accommodation[]
+  transportation  Transportation[]
+  meals          Meal[]
+  
+  // Daily cost
+  estimatedCost Float @default(0)
+  actualCost    Float @default(0)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripId, dayIndex])
+  @@map("day_plans")
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  dayPlanId String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  category    String
+  location    Location @relation(fields: [locationId], references: [id])
+  locationId  String
+  
+  // Timing
+  startTime         String
+  endTime           String
+  estimatedDuration Int // minutes
+  actualDuration    Int? // minutes
+  priority          Priority @default(MEDIUM)
+  isFlexible        Boolean @default(true)
+  
+  // Requirements
+  preferredStartTime String?
+  mustFinishBy       String?
+  minDuration        Int?
+  maxDuration        Int?
+  
+  // Cost
+  cost         Float @default(0)
+  currency     String @default("USD")
+  bookingUrl   String?
+  
+  // Metadata
+  rating       Float?
+  imageUrl     String?
+  tags         String[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("activities")
+}
+
+model Location {
+  id          String @id @default(cuid())
+  name        String
+  address     String
+  city        String
+  country     String
+  latitude    Float
+  longitude   Float
+  placeId     String? // Google Places ID
+  category    String?
+  rating      Float?
+  priceLevel  Int?
+  phoneNumber String?
+  website     String?
+  imageUrls   String[]
+  
+  activities     Activity[]
+  accommodations Accommodation[]
+  meals          Meal[]
+  savedPlaces    SavedPlace[]
+  reviews        Review[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([latitude, longitude])
+  @@map("locations")
+}
+
+model Accommodation {
+  id        String   @id @default(cuid())
+  dayPlanId String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  
+  name        String
+  type        AccommodationType
+  location    Location @relation(fields: [locationId], references: [id])
+  locationId  String
+  
+  checkIn     DateTime
+  checkOut    DateTime
+  guests      Int @default(1)
+  rooms       Int @default(1)
+  
+  // Pricing
+  pricePerNight Float
+  totalPrice    Float
+  currency      String @default("USD")
+  
+  // Details
+  rating        Float?
+  amenities     String[]
+  imageUrls     String[]
+  bookingUrl    String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("accommodations")
+}
+
+model Transportation {
+  id        String   @id @default(cuid())
+  dayPlanId String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  
+  type          TransportationType
+  fromLocation  String
+  toLocation    String
+  
+  // Timing
+  departureTime DateTime
+  arrivalTime   DateTime
+  duration      Int // minutes
+  
+  // Cost
+  price         Float
+  currency      String @default("USD")
+  
+  // Details
+  provider      String?
+  bookingRef    String?
+  bookingUrl    String?
+  details       Json? // Additional transport-specific details
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("transportation")
+}
+
+model Meal {
+  id        String   @id @default(cuid())
+  dayPlanId String
+  dayPlan   DayPlan  @relation(fields: [dayPlanId], references: [id], onDelete: Cascade)
+  
+  type        MealType
+  time        String
+  location    Location @relation(fields: [locationId], references: [id])
+  locationId  String
+  
+  // Cost
+  estimatedCost Float @default(0)
+  actualCost    Float @default(0)
+  currency      String @default("USD")
+  
+  // Details
+  cuisine       String?
+  dietary       String[]
+  reservationUrl String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("meals")
+}
+
+model SavedPlace {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  
+  notes      String?
+  tags       String[]
+  
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, locationId])
+  @@map("saved_places")
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  locationId String
+  location   Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  
+  rating     Int // 1-5
+  comment    String?
+  images     String[]
+  visitDate  DateTime?
+  
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([userId, locationId])
+  @@map("reviews")
+}
+
+// Enums
+enum BudgetLevel {
+  BUDGET
+  MID
+  LUXURY
+}
+
+enum TravelStyle {
+  RELAXED
+  COMFORTABLE
+  PACKED
+  ADVENTURE
+}
+
+enum PaceLevel {
+  COMPACT
+  COMFORTABLE
+  LEISURELY
+}
+
+enum TripStatus {
+  PLANNING
+  BOOKED
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum AccommodationType {
+  HOTEL
+  HOSTEL
+  APARTMENT
+  HOUSE
+  RESORT
+  GUESTHOUSE
+}
+
+enum TransportationType {
+  FLIGHT
+  TRAIN
+  BUS
+  CAR
+  TAXI
+  WALK
+  BIKE
+  METRO
+  FERRY
+}
+
+enum MealType {
+  BREAKFAST
+  LUNCH
+  DINNER
+  SNACK
+}
